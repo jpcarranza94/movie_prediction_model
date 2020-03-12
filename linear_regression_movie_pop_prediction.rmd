@@ -1,0 +1,490 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE, warning=FALSE }
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(GGally)
+
+```
+
+### Load data
+
+```{r load-data}
+#load("movies.Rdata")
+
+
+load("movies.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+
+The data consists of a random sample of 651 movies released before 2016, including information from Rotten Tomatoes and IMDb.
+
+### Scope of inference and generezability of results
+
+This is an observational study, which means that no random assignment was made during the recollection of the data. This means that any of our results can not proove causation.
+
+As mentioned before, since the data were indeed taking through random sampling we can be sure that our results apply to movies released before 2016. 
+
+* * *
+
+## Part 2: Research question
+
+What attributes made movies released before 2016 obtain higher audiences scores according to the IMDb and Rotten tomatoes database? How can these variables be used in a linear regression model to predict a popularity score for movies not included in the dataset?
+
+This is of interest to our client, since we could find trends of what makes a film have better popularity scores. The studio could then focus to support the creation of movies that tend to be more popular. 
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+### Structure and basic summary of data
+
+We first begin by checking the structure of the dataframe in question.
+
+```{r}
+str(movies)
+```
+
+Afterwards we begin by executing a simple summary function of all the variables in our data set. 
+
+```{r}
+summary(movies)
+
+```
+
+
+###Exploratory Data Analysis
+
+####Creating a popularity score
+Afterwards we begin by performing exploratory data analysis on our response variables: audience score from Rotter Tomatoes and IMDb rating.
+
+```{r}
+
+#First we will analyze Rotten Tomatoes audience score
+movies %>%
+  summarize(meanscore = mean(audience_score), medianscore = median(audience_score), IQRscore = IQR(audience_score), sdscore = sd(audience_score), maxscore = max(audience_score), minscore = min(audience_score))
+
+ggplot(movies, aes(x = audience_score)) + geom_histogram(aes(y = ..density..), bins = 20) + geom_density( size = 1.5)
+
+
+#Second, we analyze IMDb rating
+movies %>%
+  summarize(meanscore = mean(imdb_rating), medianscore = median(imdb_rating), IQRscore = IQR(imdb_rating), sdscore = sd(imdb_rating), maxscore = max(imdb_rating), minscore = min(imdb_rating))
+
+ggplot(movies, aes(x = imdb_rating)) + geom_histogram(aes(y = ..density..)) + geom_density( size = 1.5)
+
+```
+
+For the distribution of the Rotten Tomatoes audience score we see a narrow distribution with a strong left skew.The mean audience score is about 62. When we take a look at the IMDb rating we see a wider distribution, with a mean score of 6.49. It has a left skew, with a longer left tail than our other distribution.
+
+
+```{r}
+#Analyze correlation between IMDb rating and Rotter Tomatoes audience score, in an attempt to create a unified variable that describes popularity of films
+
+cor(movies$audience_score, movies$imdb_rating)
+
+ggplot(movies, aes(x = audience_score, y = imdb_rating)) +
+  geom_point(alpha = 0.6) + 
+  geom_smooth( method = "lm")
+
+modelnewvar <- lm(imdb_rating ~ audience_score, movies)
+
+summary(modelnewvar)
+
+#Since both variables have a high correlation coefficient we will proceed to create a new variable 
+
+moviesmod <- movies %>%
+  mutate(popularscore = ((imdb_rating*10 + audience_score)/2)) 
+
+moviesmod %>%
+  summarize(mean = mean(popularscore), median = median(popularscore), sd = sd(popularscore), IQR(popularscore), max(popularscore), min(popularscore))
+
+ggplot(moviesmod, aes(x = popularscore)) + geom_histogram( aes(y  = ..density..)) + geom_density()
+```
+
+Afterwards, in order to combine the data given by the Rotten Tomatoes audience score and IMDb rating we want to check if both variables are highly correlated. The correlation coefficient between both variables is 0.8649. You can see the representation for this correlation in the scatter plot. The least squares line divides the data somewhat evenly. Therefore, a combined "popular" score was created by multiplying the IMDb rating * 10, and then taking an average of both scores. This combined popularity score will be used to conduct any further analysis. 
+
+
+```{r}
+#Take into account IMDb number of votes as a variable also representing popularity of a movie
+movies %>%
+  summarize(meanscore = mean(imdb_num_votes), medianscore = median(imdb_num_votes), IQRscore = IQR(imdb_num_votes), sdscore = sd(imdb_num_votes), maxscore = max(imdb_num_votes), minscore = min(imdb_num_votes))
+
+ggplot(movies, aes(x = imdb_num_votes)) + geom_histogram(aes(y = ..density..)) + geom_density( size = 1.5) 
+
+ggplot(movies, aes(x = log(imdb_num_votes))) + geom_histogram(aes(y = ..density..)) + geom_density( size = 1.5) 
+```
+
+In an attempt to take into account IMDb number of votes as a measure of popularity, summary statistics were calculated. In the first histogram we can observe that this variable has a very strong right skew. To normalize the data at hand, a log transformation was used. The second histogram shows this transformation were most of the skew has disappeared and the data in centered.
+
+```{r}
+
+print("Correlation coefficient using imdb number of votes")
+cor(moviesmod$popularscore, moviesmod$imdb_num_votes)
+
+print("Correlation coefficient using log10 of imdb number of votes")
+cor(moviesmod$popularscore, log(moviesmod$imdb_num_votes))
+
+ggplot(moviesmod, aes( x = imdb_num_votes, y = popularscore)) + geom_point(alpha = 0.3)
+
+ggplot(moviesmod, aes( x = log(imdb_num_votes), y = popularscore)) + geom_point(alpha = 0.6)
+```
+
+Afterwards a correlation coefficient was calculated for how the number of votes submitted in the IMDb platform affected our new popular score variable. We can see that the correlation coefficient while using the log transformation of the data is less than the correlation of using the raw data. The scatter plots show the weak linear correlation shown by the data.
+
+
+```{r}
+print ( "Correlation coefficient using critic score")
+cor(moviesmod$critics_score, moviesmod$popularscore)
+
+ggplot(moviesmod, aes(x = moviesmod$critics_score, y = popularscore)) + geom_point(alpha = 0.6)
+
+```
+For critic score, the correlation coefficient is very high, which means that it will most probably be a strong predictor for a high popularity score when performing a multiple linear regression. The scatter plot shows the strong correlation.
+
+
+```{r}
+
+print ( "Correlation coefficient using runtime")
+cor(moviesmod$runtime, moviesmod$popularscore, use = "complete.obs")
+
+ggplot(moviesmod, aes(x = moviesmod$runtime, y = popularscore)) + geom_point(alpha = 0.6)
+```
+For runtime we see that the correlation coefficient isn't as high, with R = 0.2182. The relationship is shown in the sctatter plot. We can see that most of the movies have a similar duration. This means that if we were to use this variable as a predictor variable, the residuals plot would not show constant variability between the data. This makes it not apt to use in a linear model. 
+
+```{r}
+print ( "Correlation coefficient using theater release year ")
+cor(moviesmod$thtr_rel_year, moviesmod$popularscore, use = "complete.obs")
+
+ggplot(moviesmod, aes(x = moviesmod$thtr_rel_year, y = popularscore)) + geom_point(alpha = 0.6)
+
+print ( "Correlation coefficient using dvd release year ")
+cor(moviesmod$dvd_rel_year, moviesmod$popularscore, use = "complete.obs")
+
+ggplot(moviesmod, aes(x = moviesmod$dvd_rel_year, y = popularscore)) + geom_point(alpha = 0.6)
+```
+
+
+We see that the most probably the theater release year and the dvd release year will not be good predictors for our model, since both the coefficients are near 0. The lack of the linear relationship is shown by the scatter plots.
+
+###Boxplots for comparing categorical variables
+
+```{r}
+ggplot(moviesmod, aes(x = best_pic_nom, y = popularscore)) + geom_boxplot()
+```
+
+You can see that median score for pictures norminated for best picture film is much higher than the score for films that weren't nominated.
+
+```{r}
+ggplot(moviesmod, aes(x = best_pic_win, y = popularscore)) + geom_boxplot()
+
+```
+
+The same case is illustrated by this boxplot. Films that went on to win a Best picture award have a higher popularity score.
+
+```{r}
+ggplot(moviesmod, aes(x = best_actor_win, y = popularscore)) + geom_boxplot()
+```
+
+On the other hand, films which starred an actor who already had a Best Actor award don't have better popularity scores, with the median for films with actors who did win being even lower.
+
+```{r}
+ggplot(moviesmod, aes(x = best_actress_win, y = popularscore)) + geom_boxplot()
+```
+
+For films which starred an actress who had already won a Best Actress award, the median score is higher, but the difference isn't as noticeable as shown in the boxplot
+
+```{r}
+ggplot(moviesmod, aes(x = best_dir_win, y = popularscore)) + geom_boxplot()
+```
+
+On the other hand, if the director had won a Best Actor award, the film scored a higher popularity score.
+
+```{r}
+ggplot(moviesmod, aes(x = top200_box, y = popularscore)) + geom_boxplot()
+```
+
+If the movie was included in the Top 200 Box Office list on BoxOfficeMojo appears to be a significant predictor for our linear model. The median for the movies that were included is higher than those that weren't as shown in the boxplot.
+
+```{r}
+ggplot(moviesmod, aes(x = title_type, y = popularscore)) + geom_boxplot()
+```
+
+The title type appears to have an effect on our popular score, with it being higher on documentary films. The variability across the groups isn't constant, as shown by the size of the boxes.
+
+
+```{r}
+ggplot(moviesmod, aes(x = genre, y = popularscore)) + geom_boxplot()+ theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 7)) + coord_flip()
+```
+
+The situation for movie genre is complicated, it appears that Documentary and Musical and Arts films have higher scores, where as Comedy and Horror films have the worst scores.
+
+
+```{r}
+summary(moviesmod$mpaa_rating)
+
+ggplot(moviesmod, aes(x = mpaa_rating, y = popularscore)) + geom_boxplot() + theme(axis.text.x = element_text(size = 10))
+```
+
+Using MPAA rating to predict our popular score prooves challenging since 50 movies have unrated MPAA rating, and coincidentally, this group appears to have the highest median score. 
+
+```{r}
+ggplot(moviesmod, aes(x = critics_rating, y = popularscore)) + geom_boxplot() + theme(axis.text.x = element_text(size = 10))
+```
+
+```{r}
+ggplot(moviesmod, aes(x = audience_rating, y = popularscore)) + geom_boxplot() + theme(axis.text.x = element_text(size = 10))
+```
+
+Including these last two variables is complicated since they are directly determined by the Rotten Tomatoes' audience score and IMDb's rating, the two numeric variables we used to create our model. This means that we are at risk of high collinearity between our explanatory variables. 
+
+
+####Pairwise scatter plots to evaluate possible numeric predictors
+```{r}
+#Create data subset with only important variables included.
+
+moviessimple <- moviesmod %>%
+  select(-c(1, 6:12, 25:32))
+
+
+moviessimplenumeric <- moviessimple %>%
+  select(c(popularscore, runtime, imdb_num_votes, critics_score))
+
+ggpairs(moviessimplenumeric, progress = FALSE)
+
+```
+
+In our numeric variables, we can be sure at least, that collinearity between our explanatory variables isn't a problem.
+
+
+* * *
+
+## Part 4: Modeling
+
+###Data cleaning and exclusion of variables
+
+
+Taking into account all of our exploratory data analysis conducted in the previous section, a multiple linear regression model will now be created.
+
+Before making our a linear model we have to exclude several variables:
+  - Upon reading about how audience ratings in Rotten Tomatoes are determined, it was found that it is directly determined by the audience score, thus it would result in an unreal linear model since both variables are perfectly correlated. 
+  -Mpaa_rating will be excluded since 50 entries in our data have an unranked rating, and coincidentally, those are the ones with higher scores. Attempting to complete the data for 50 different films through a randomforest model is possible, but, that would increase the uncertainty of our model.
+  -Finally, critics rating was reformulated into a new type of variable which only takes into account if the movie was certified fresh. We had the same issue as in audience rating, the critic's score directly influences if a movie is classified as Fresh or Rotten.
+  -Actor names, studio names, and director names are all eliminated from our model since they are categorical variables with too many different levels.
+  
+
+```{r}
+#First we will filter out missing data from our model
+
+
+
+moviessimple1 <- moviessimple %>%
+  filter(!is.na(runtime)) %>%
+  mutate(iscertifiedfresh = ifelse(critics_rating == "Certified Fresh", "yes", "no"))%>%
+  select(-c(imdb_rating, audience_score, mpaa_rating, audience_rating, critics_rating))
+
+modelscore <- lm(popularscore ~ ., moviessimple1)
+
+summary(modelscore)
+
+```
+
+###Backwards selection
+
+Next we will begin to drop different variables according to their p values. First variable dropped is genre.
+
+```{r}
+#Try dropping genre to improve R2
+moviessimple2 <- moviessimple1 %>%
+  filter(!is.na(runtime)) %>%
+  select(-c(genre))
+
+modelscore <- lm(popularscore ~ ., moviessimple2)
+
+summary(modelscore)
+
+```
+
+The adjusted R squared didn't improve so we add genre back in the model. We try adjusting the model through backwards elimination. Backwards elimination is a process in which we adjust our model based on the P value and the ajdusted R squared that results from the elimination of the variable. In this case we will employ mainly the Adjusted R squared method, but taking support from our P value method.
+
+```{r}
+#Try dropping best_actor_win
+moviessimple3 <- moviessimple1 %>%
+  filter(!is.na(runtime)) %>%
+  select(-c(best_actor_win))
+
+modelscore <- lm(popularscore ~ ., moviessimple3)
+
+summary(modelscore)
+```
+
+```{r}
+#Try dropping best_actress_win
+moviessimple4 <- moviessimple3 %>%
+  filter(!is.na(runtime)) %>%
+  select(-c(best_actress_win))
+
+modelscore <- lm(popularscore ~ ., moviessimple4)
+
+summary(modelscore)
+```
+
+```{r}
+#Try dropping best_dir_win
+moviessimple5 <- moviessimple4 %>%
+  filter(!is.na(runtime)) %>%
+  select(-c(best_dir_win))
+
+modelscore <- lm(popularscore ~ ., moviessimple5)
+
+summary(modelscore)
+```
+
+```{r}
+#Try dropping iscertifiedfresh
+moviessimple6 <- moviessimple5 %>%
+  filter(!is.na(runtime)) %>%
+  select(-c(iscertifiedfresh))
+
+modelscore <- lm(popularscore ~ ., moviessimple6)
+
+summary(modelscore)
+```
+
+```{r}
+#Try dropping top200_box
+moviessimple7 <- moviessimple6 %>%
+  filter(!is.na(runtime)) %>%
+  select(-c(top200_box))
+
+modelscore <- lm(popularscore ~ ., moviessimple7)
+
+summary(modelscore)
+```
+
+###Final Model
+
+```{r}
+#Try dropping title_type
+moviessimple8 <- moviessimple7 %>%
+  filter(!is.na(runtime)) %>%
+  select(-c(title_type))
+
+modelscore <- lm(popularscore ~ ., moviessimple8)
+
+summary(modelscore)
+```
+
+Our final model includes the following variables:
+  -genre of the film
+  -runtime of the film
+  -IMDb number of votes
+  -Rotten Tomatoes Critics score
+  -Nomination for Best Picture
+  -Best Picture Award won
+  
+The adjusted R-Squared for this model is 0.6233. This means that 62.33% of the variability in the data can be explained by the multiple linear regression model created. The residual standard error is 9.241, with 634 deegrees of freedom. Rotten Tomatoes Critics Score seems to be the strongest predictor for our model, with the lowest p value. 
+
+###Model Diagnostics
+
+```{r}
+ggplot(data = modelscore, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+
+To check for constant variability in the residuals we use a fitted values vs residuals scatter plot, in this plot, we see a random distribution along the 0 line. The model seems to be able to more accurately predict greater scores, where the variability is somewhat lower. In the lower scores the residuals are more variable. The ideal model would have constant variability along all possible scores, but in this model the condition is more or less satisfied.  
+
+```{r}
+ggplot(modelscore, aes(x = .resid)) + geom_histogram() + xlab("Residuals")
+```
+
+Upon checking the residuals histogram, it can be said that they follow a normal distribution, thus this condition is satisfied.
+
+
+```{r}
+plot(modelscore$residuals)
+```
+
+Next we create a scatter plot with each of the residuals ordered through their index in the dataframe. This plot helps check for non independent data, most commonly data ordered in a time series manner. In this case, the residuals do appear to be independent and random of each other, thus also satisfying this condition. 
+
+* * *
+
+## Part 5: Prediction
+
+###Model prediction for Interstellar 2014
+
+To check our model a calculated popularity score will be predicted for a movie not included in the data set. Since our original dataset doesn't include data from movies beyond 2014, I will be choosing a film released in 2014. In this case "Interstellar" by "Christopher Nolan" and starring Matthew McConaughey, Anne Hathway, Jessica Chastain, Michale Caine.
+
+This film has the following characteristics which will be evaluated by our model:
+
+-Genre: Adventure, Drama, Sci-Fi (According to IMDb), Action and Adventure, Science Fiction and Fantasy (According to Rotten Tomatoes)
+-Runtime: 169 minutes
+-IMDb number of votes: 1,326,203
+-Rotten Tomatoes Critics Score: 72
+-Not nominated for best picture
+-Didn't win best picture Oscar
+
+The IMDb score for this film is 8.6, and the Rotten Tomatoes audience score is 85. which means that the 
+that our popularity score is 85.5
+
+```{r}
+predictInterstellar <- data.frame(genre = "Action & Adventure", runtime = 169, imdb_num_votes = 1326203, critics_score = 72, best_pic_nom = "no", best_pic_win = "no")
+
+predict(modelscore, predictInterstellar, interval = c("confidence"))
+
+```
+
+The fitted popularity score for the movie Interstellar is 101.9205, with a 95% confidence interval of 92.82, and 111.0126. This means that we are 95% confident that the true popularity score for this movie is between 92.82 and 111.0126, according to our model. 
+
+Checking for our prediction we see that we have a residual of 101.9205 - 85.5 = 16.42 points in our score. The main problem in the linear regression model at this point is that the data used to make the prediction includes the IMDb number of votes from 2019, and not 2016, the data from which our model is based on, which makes for an overestimation of our popularity score. This is definitely a shortcoming in our ability to test our model in data different from our training set. 
+
+The data obtained for the movie Interstellar was obtained from the following two web pages: 
+
+https://www.imdb.com/title/tt0816692/
+
+https://www.rottentomatoes.com/m/interstellar_2014
+
+
+* * *
+
+## Part 6: Conclusion
+
+The best linear regression model for predicting a popularity score (comprised of an average of IMDb and Rotten Tomatoes scores) includes the variables:
+
+-genre
+-runtime
+-IMDb number of votes
+-Rotten Tomatoes Critics score
+-Nomination to Best Picture Award
+-Best Picture Award
+
+with an R squared value of 0.6233. 
+
+The Rotten Tomatoes Critics Score had the lowest p value, followed by IMDb number of votes. Films from a Documentary genre had significantly better scores.
+
+One of the main shortcomings of this model was that the data the model was trained on for IMDb number of votes belonged to the year 2016. This means that all scores will be overestimated when using data for 2019, where the number of votes has already increased, whereas scores have remained somewhat similar. To improve our model we could look for more variables that could be correlated with a better popularity score, such as the specific Box Office for each film, or budget used in their production.
+
+
